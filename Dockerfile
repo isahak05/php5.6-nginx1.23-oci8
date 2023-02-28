@@ -1,41 +1,93 @@
-FROM debian:jessie
+## *** try again during pacjage installation if failed *** repository server may not available that time but few minutes later it wiill work
+FROM ubuntu:22.04
 
-MAINTAINER Thomas Bisignani <contact@thomasbisignani.com>
+MAINTAINER ISAHAK ALI isahak05ice@gmail.com
 
 RUN apt-get update
 RUN apt-get -y upgrade
+RUN apt install software-properties-common -y
 
-# Install Apache2 / PHP 5.6 & Co.
-RUN apt-get -y install apache2 php5 libapache2-mod-php5 php5-dev php-pear php5-curl curl libaio1
+RUN add-apt-repository ppa:ondrej/php
+RUN  apt-get update -y
+RUN  apt-get install  php5.6-fpm php5.6-cli php5.6-xml php5.6-mysql unzip -y
 
-# Install the Oracle Instant Client
-ADD oracle/oracle-instantclient12.1-basic_12.1.0.2.0-2_amd64.deb /tmp
-ADD oracle/oracle-instantclient12.1-devel_12.1.0.2.0-2_amd64.deb /tmp
-ADD oracle/oracle-instantclient12.1-sqlplus_12.1.0.2.0-2_amd64.deb /tmp
-RUN dpkg -i /tmp/oracle-instantclient12.1-basic_12.1.0.2.0-2_amd64.deb
-RUN dpkg -i /tmp/oracle-instantclient12.1-devel_12.1.0.2.0-2_amd64.deb
-RUN dpkg -i /tmp/oracle-instantclient12.1-sqlplus_12.1.0.2.0-2_amd64.deb
-RUN rm -rf /tmp/oracle-instantclient12.1-*.deb
+RUN apt-get install php5.6-gd php5.6-mysql php5.6-imap php5.6-curl php5.6-intl  -y
 
-# Set up the Oracle environment variables
-ENV LD_LIBRARY_PATH /usr/lib/oracle/12.1/client64/lib/
-ENV ORACLE_HOME /usr/lib/oracle/12.1/client64/lib/
+RUN apt-get install php5.6-curl  php5.6-mysql  php5.6-ldap  php5.6-zip php5.6-fileinfo -y
+RUN apt-get install php5.6-mcrypt  php5.6-gd  -y
 
-# Install the OCI8 PHP extension
-RUN echo 'instantclient,/usr/lib/oracle/12.1/client64/lib' | pecl install -f oci8-2.0.8
-RUN echo "extension=oci8.so" > /etc/php5/apache2/conf.d/30-oci8.ini
+RUN apt-get install  libaio1 -y
 
-# Enable Apache2 modules
-RUN a2enmod rewrite
+RUN apt-get install build-essential -y
+RUN apt-get install php5.6-gd  php5.6-opcache php5.6-soap -y
 
-# Set up the Apache2 environment variables
-ENV APACHE_RUN_USER www-data
-ENV APACHE_RUN_GROUP www-data
-ENV APACHE_LOG_DIR /var/log/apache2
-ENV APACHE_LOCK_DIR /var/lock/apache2
-ENV APACHE_PID_FILE /var/run/apache2.pid
+##
+RUN apt-get install  php5.6-dev -y
+RUN  apt-get install php-pear -y
 
+RUN apt-get install  php5.6-bcmath php5.6-dom  php5.6-ctype  -y
+RUN apt-get install php5.6-iconv php5.6-intl php5.6-json  -y
+RUN apt-get install php5.6-mcrypt     php5.6-phar php5.6-pdo   -y
+
+
+## oracle client
+
+RUN apt-get install wget  systemtap-sdt-dev -y
+
+
+ADD index.php /usr/share/nginx/html/
+
+
+ADD instantclient-basic-linux.x64-21.9.0.0.0dbru.zip /tmp/
+ADD instantclient-sdk-linux.x64-21.9.0.0.0dbru.zip /tmp/
+
+WORKDIR /tmp
+RUN mkdir /opt/oracle
+RUN unzip instantclient-basic-linux.x64-21.9.0.0.0dbru.zip -d /opt/oracle
+RUN unzip instantclient-sdk-linux.x64-21.9.0.0.0dbru.zip   -d /opt/oracle
+
+RUN rm /tmp/*
+
+
+RUN apt-get install libaio1 -y
+
+RUN echo /opt/oracle/instantclient_21_9/  > /etc/ld.so.conf.d/oracle-instantclient.conf \
+    && ldconfig
+
+RUN pecl channel-update pecl.php.net
+RUN export PHP_DTRACE=yes
+
+
+#############################################################################################
+RUN  export LD_LIBRARY_PATH=/opt/oracle/instantclient_21_9:$LD_LIBRARY_PATH
+RUN  export PATH=/opt/oracle/instantclient_21_9/bin:$PATH
+#RUN  source /root/.profile
+
+RUN echo 'instantclient,/opt/oracle/instantclient_21_9/' | pecl install -f oci8-2.0.12
+
+RUN   echo "extension=oci8.so" >> /etc/php/5.6/cli/php.ini
+RUN   echo "extension=oci8.so" >> /etc/php/5.6/fpm/php.ini
+
+
+RUN apt-get install wget -y
+RUN wget https://nginx.org/packages/ubuntu/pool/nginx/n/nginx/nginx_1.22.1-1~jammy_amd64.deb
+RUN  dpkg -i nginx_1.22.1-1~jammy_amd64.deb
+
+# Start both PHP-FPM and Nginx services
+#CMD service php5.6-fpm start
+#CMD ["nginx", "-g", "daemon off;"]
+
+ADD default.conf  /etc/nginx/conf.d/default.conf
+ADD www.conf     /etc/php/5.6/fpm/pool.d/www.conf
+
+
+RUN mkdir /run/php
+RUN chown -R www-data:www-data /run/php && \
+    chmod -R 777 /run/php
+
+# Expose the HTTP and HTTPS ports
 EXPOSE 80
+EXPOSE 443
 
-# Run Apache2 in Foreground
-CMD /usr/sbin/apache2 -D FOREGROUND
+# Start both services
+CMD service php5.6-fpm start && nginx -g 'daemon off;'
